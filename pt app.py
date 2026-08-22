@@ -1,19 +1,25 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime, combine, date, time
+import datetime
 
 st.set_page_config(page_title="Sistem Rekod Gaji Jam", layout="centered")
 
 FILE_PATH = "rekod_gaji.csv"
 
-# 1. Semak fail data CSV, jika belum ada buat fail baru
+# 1. Semak fail data CSV, jika belum ada atau lajur tak sepadan, buat baru
 if not os.path.exists(FILE_PATH):
     df_init = pd.DataFrame(columns=["Tarikh", "Mula Kerja", "Tamat Kerja", "Jam Kerja", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"])
     df_init.to_csv(FILE_PATH, index=False)
 
-# Baca data semasa dari fail
+# Baca data
 df = pd.read_csv(FILE_PATH)
+
+# Jika fail CSV lama tak ada lajur Mula Kerja, reset automatik supaya tak crash
+if not df.empty and "Mula Kerja" not in df.columns:
+    df_init = pd.DataFrame(columns=["Tarikh", "Mula Kerja", "Tamat Kerja", "Jam Kerja", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"])
+    df_init.to_csv(FILE_PATH, index=False)
+    df = pd.read_csv(FILE_PATH)
 
 st.title("⏱️ Sistem Pengira & Rekod Gaji Jam")
 
@@ -21,13 +27,13 @@ st.title("⏱️ Sistem Pengira & Rekod Gaji Jam")
 st.subheader("➕ Isi Rekod Kerja Baru")
 
 with st.form("form_gaji", clear_on_submit=True):
-    tarikh = st.date_input("Tarikh Kerja", value=datetime.now())
+    tarikh = st.date_input("Tarikh Kerja", value=datetime.date.today())
     
     col_waktu1, col_waktu2 = st.columns(2)
     with col_waktu1:
-        waktu_mula = st.time_input("Pukul Berapa Mula", value=time(9, 0))
+        waktu_mula = st.time_input("Pukul Berapa Mula", value=datetime.time(9, 0))
     with col_waktu2:
-        waktu_tamat = st.time_input("Pukul Berapa Tamat", value=time(17, 0))
+        waktu_tamat = st.time_input("Pukul Berapa Tamat", value=datetime.time(17, 0))
         
     rate_jam = st.number_input("Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=7.0)
     
@@ -35,12 +41,12 @@ with st.form("form_gaji", clear_on_submit=True):
     
     if simpan:
         # Kirakan beza masa (jumlah jam kerja) secara automatik
-        dt_mula = combine(date.today(), waktu_mula)
-        dt_tamat = combine(date.today(), waktu_tamat)
+        dt_mula = datetime.datetime.combine(datetime.date.today(), waktu_mula)
+        dt_tamat = datetime.datetime.combine(datetime.date.today(), waktu_tamat)
         
         # Jika kerja melepasi tengah malam (contoh: 10 PM hingga 6 AM)
         if dt_tamat <= dt_mula:
-            dt_tamat = dt_tamat.replace(day=dt_tamat.day + 1)
+            dt_tamat = dt_tamat + datetime.timedelta(days=1)
             
         durasi = dt_tamat - dt_mula
         jam_kerja = durasi.total_seconds() / 3600.0  # Tukar ke unit jam
