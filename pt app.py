@@ -5,7 +5,7 @@ import datetime
 
 # 1. Konfigurasi Halaman & Dark Theme
 st.set_page_config(
-    page_title="GajiKu | Dark Aesthetic Edition",
+    page_title="GajiKu | Interactive Table Edition",
     page_icon="🌙",
     layout="centered"
 )
@@ -175,8 +175,8 @@ with st.form("form_gaji", clear_on_submit=True):
 
 st.markdown("---")
 
-# ---- BAHAGIAN 2: REKAP BULANAN ----
-st.subheader("📊 Analytics & Data")
+# ---- BAHAGIAN 2: REKAP BULANAN & DIRECT EDIT ----
+st.subheader("📊 Analytics & Live Edit")
 
 if len(df) > 0:
     senarai_bulan = df["Bulan_Tahun"].unique().tolist()
@@ -194,96 +194,52 @@ if len(df) > 0:
         st.metric(f"⏳ Total Jam Bersih ({bulan_pilihan})", f"{total_jam_bulan:.1f} hrs")
     
     st.write("")
-    st.dataframe(df_filtered.drop(columns=["Bulan_Tahun"]), use_container_width=True)
+    st.caption("💡 **Petunjuk:** Tekan mana-mana petak jadual untuk ubah data. Boleh jugak tanda kotak tepi untuk padam baris.")
     
-    # ---- BAHAGIAN EDIT & PADAM DATA ----
-    st.markdown("---")
+    # Jadual Boleh Edit Direct (Data Editor)
+    df_edited = st.data_editor(
+        df_filtered,
+        num_rows="dynamic", # Boleh tambah/padam baris terus
+        use_container_width=True,
+        key="editor_gaji"
+    )
     
-    # EDIT DATA HARIAN
-    with st.expander("✏️ Edit Rekod Lepas"):
-        senarai_tarikh = df_filtered["Tarikh"].tolist()
-        if senarai_tarikh:
-            pilih_edit_tarikh = st.selectbox("Pilih Tarikh Nak Edit:", senarai_tarikh)
-            
-            # Ambil data asal tarikh dipilih
-            row_asal = df[df["Tarikh"] == pilih_edit_tarikh].iloc[0]
-            
-            st.write(f"**Kemaskini Data Untuk ({pilih_edit_tarikh}):**")
-            
-            with st.form("form_edit"):
-                # Parse Waktu Mula Asal
-                time_mula_str = str(row_asal["Mula Kerja"])
-                h1_asal = int(time_mula_str.split(":")[0])
-                m1_asal = time_mula_str.split(":")[1].split()[0]
-                p1_asal = time_mula_str.split()[-1]
+    # Butang Kemaskini
+    if st.button("💾 SIMPAN PERUBAHAN JADUAL"):
+        # Auto recalculate Jam Bersih & Gaji Syif untuk data yang diubah
+        for i in df_edited.index:
+            try:
+                # Parse waktu untuk perkiraan baru
+                dt_mula = datetime.datetime.strptime(df_edited.at[i, "Mula Kerja"], "%I:%M %p")
+                dt_tamat = datetime.datetime.strptime(df_edited.at[i, "Tamat Kerja"], "%I:%M %p")
                 
-                col_e_h1, col_e_m1, col_e_p1 = st.columns([1, 1, 1])
-                with col_e_h1:
-                    e_jam_mula = st.selectbox("Jam Mula", list(range(1, 13)), index=h1_asal-1, key="e_jm")
-                with col_e_m1:
-                    e_minit_mula = st.selectbox("Minit Mula", ["00", "15", "30", "45"], index=["00", "15", "30", "45"].index(m1_asal) if m1_asal in ["00", "15", "30", "45"] else 0, key="e_mm")
-                with col_e_p1:
-                    e_ampm_mula = st.selectbox("AM/PM Mula", ["AM", "PM"], index=0 if p1_asal=="AM" else 1, key="e_pm1")
-
-                # Parse Waktu Tamat Asal
-                time_tamat_str = str(row_asal["Tamat Kerja"])
-                h2_asal = int(time_tamat_str.split(":")[0])
-                m2_asal = time_tamat_str.split(":")[1].split()[0]
-                p2_asal = time_tamat_str.split()[-1]
-
-                col_e_h2, col_e_m2, col_e_p2 = st.columns([1, 1, 1])
-                with col_e_h2:
-                    e_jam_tamat = st.selectbox("Jam Tamat", list(range(1, 13)), index=h2_asal-1, key="e_jt")
-                with col_e_m2:
-                    e_minit_tamat = st.selectbox("Minit Tamat", ["00", "15", "30", "45"], index=["00", "15", "30", "45"].index(m2_asal) if m2_asal in ["00", "15", "30", "45"] else 0, key="e_mm2")
-                with col_e_p2:
-                    e_ampm_tamat = st.selectbox("AM/PM Tamat", ["AM", "PM"], index=0 if p2_asal=="AM" else 1, key="e_pm2")
-
-                st.write("")
-                col_e_tolak, col_e_rate = st.columns(2)
-                with col_e_tolak:
-                    e_jam_tolak = st.number_input("☕ Jam Tolak (Break)", min_value=0.0, max_value=12.0, step=0.5, value=float(row_asal["Jam Tolak"]))
-                with col_e_rate:
-                    e_rate_jam = st.number_input("💎 Rate/Jam (RM)", min_value=0.0, step=0.5, value=float(row_asal["Rate/Jam (RM)"]))
-
-                kemaskini = st.form_submit_button("💾 KEMASKINI REKOD")
-
-                if kemaskini:
-                    eh_mula = e_jam_mula % 12 + (12 if e_ampm_mula == "PM" else 0)
-                    eh_tamat = e_jam_tamat % 12 + (12 if e_ampm_tamat == "PM" else 0)
-
-                    e_waktu_mula = datetime.time(eh_mula, int(e_minit_mula))
-                    e_waktu_tamat = datetime.time(eh_tamat, int(e_minit_tamat))
-
-                    dt_e_mula = datetime.datetime.combine(datetime.date.today(), e_waktu_mula)
-                    dt_e_tamat = datetime.datetime.combine(datetime.date.today(), e_waktu_tamat)
-
-                    if dt_e_tamat <= dt_e_mula:
-                        dt_e_tamat = dt_e_tamat + datetime.timedelta(days=1)
-
-                    e_durasi = dt_e_tamat - dt_e_mula
-                    e_jam_kasar = e_durasi.total_seconds() / 3600.0
-                    e_jam_bersih = e_jam_kasar - e_jam_tolak
-
-                    if e_jam_bersih > 0 and e_rate_jam > 0:
-                        e_gaji_syif = e_jam_bersih * e_rate_jam
-
-                        # Update data dalam DataFrame
-                        idx = df[df["Tarikh"] == pilih_edit_tarikh].index[0]
-                        df.at[idx, "Mula Kerja"] = e_waktu_mula.strftime("%I:%M %p")
-                        df.at[idx, "Tamat Kerja"] = e_waktu_tamat.strftime("%I:%M %p")
-                        df.at[idx, "Jam Tolak"] = e_jam_tolak
-                        df.at[idx, "Jam Bersih"] = round(e_jam_bersih, 2)
-                        df.at[idx, "Rate/Jam (RM)"] = e_rate_jam
-                        df.at[idx, "Gaji Syif (RM)"] = round(e_gaji_syif, 2)
-
-                        df.to_csv(FILE_PATH, index=False)
-                        st.success(f"Rekod untuk {pilih_edit_tarikh} berjaya dikemaskini!")
-                        st.rerun()
-                    else:
-                        st.error("Jam bersih mestilah lebih dari 0.")
+                if dt_tamat <= dt_mula:
+                    dt_tamat = dt_tamat + datetime.timedelta(days=1)
+                    
+                durasi = dt_tamat - dt_mula
+                jam_kasar = durasi.total_seconds() / 3600.0
+                
+                jam_tolak = float(df_edited.at[i, "Jam Tolak"])
+                rate_jam = float(df_edited.at[i, "Rate/Jam (RM)"])
+                
+                jam_bersih = jam_kasar - jam_tolak
+                gaji_syif = jam_bersih * rate_jam
+                
+                df_edited.at[i, "Jam Bersih"] = round(jam_bersih, 2)
+                df_edited.at[i, "Gaji Syif (RM)"] = round(gaji_syif, 2)
+            except:
+                pass
+                
+        # Gabung balik dengan data bulan lain
+        df_baki = df[df["Bulan_Tahun"] != bulan_pilihan]
+        df_final = pd.concat([df_baki, df_edited], ignore_index=True)
+        
+        df_final.to_csv(FILE_PATH, index=False)
+        st.success("Perubahan berjaya disimpan & gaji dikira semula!")
+        st.rerun()
 
     # PADAM BULAN
+    st.markdown("---")
     with st.expander(f"🗑️ Padam Data Bulan {bulan_pilihan}"):
         st.warning(f"Adakah anda pasti nak padam SEMUA rekod untuk bulan **{bulan_pilihan}**?")
         if st.button(f"Sahkan Padam {bulan_pilihan}"):
