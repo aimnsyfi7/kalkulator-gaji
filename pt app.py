@@ -36,14 +36,14 @@ st.markdown("""
     }
     
     div[data-testid="stMetricValue"] {
-        font-size: 26px !important;
+        font-size: 30px !important;
         font-weight: 800 !important;
         color: #00E676 !important;
         text-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
     }
     
     div[data-testid="stMetricLabel"] {
-        font-size: 12px !important;
+        font-size: 13px !important;
         font-weight: 600 !important;
         color: #A0A0A0 !important;
         text-transform: uppercase;
@@ -66,7 +66,7 @@ st.markdown("""
         box-shadow: 0 6px 20px rgba(124, 77, 255, 0.7) !important;
     }
     
-    div[data-baseweb="input"] {
+    div[data-baseweb="input"], div[data-baseweb="select"] {
         border-radius: 10px !important;
         background-color: #1A1D24 !important;
         border: 1px solid #2D323E !important;
@@ -105,22 +105,43 @@ st.subheader("⏱️ Record Shift Harian")
 with st.form("form_gaji", clear_on_submit=True):
     tarikh = st.date_input("🗓️ Tarikh Kerja", value=datetime.date.today())
     
-    col_waktu1, col_waktu2 = st.columns(2)
-    with col_waktu1:
-        waktu_mula = st.time_input("🌆 Pukul Berapa Mula", value=datetime.time(9, 0))
-    with col_waktu2:
-        waktu_tamat = st.time_input("🌃 Pukul Berapa Tamat", value=datetime.time(17, 0))
+    # --- SELECTION MASA MULA (AM / PM) ---
+    st.write("🌆 **Waktu Mula Kerja:**")
+    col_h1, col_m1, col_p1 = st.columns([1, 1, 1])
+    with col_h1:
+        jam_mula = st.selectbox("Jam", list(range(1, 13)), index=9, key="jm") # Default 10
+    with col_m1:
+        minit_mula = st.selectbox("Minit", ["00", "15", "30", "45"], index=0, key="mm")
+    with col_p1:
+        ampm_mula = st.selectbox("AM/PM", ["AM", "PM"], index=0, key="pm1") # Default AM
+
+    # --- SELECTION MASA TAMAT (AM / PM) ---
+    st.write("🌃 **Waktu Tamat Kerja:**")
+    col_h2, col_m2, col_p2 = st.columns([1, 1, 1])
+    with col_h2:
+        jam_tamat = st.selectbox("Jam", list(range(1, 13)), index=9, key="jt") # Default 10
+    with col_m2:
+        minit_mula2 = st.selectbox("Minit ", ["00", "15", "30", "45"], index=0, key="mm2")
+    with col_p2:
+        ampm_tamat = st.selectbox("AM/PM ", ["AM", "PM"], index=1, key="pm2") # Default PM
         
+    st.write("")
     col_tolak, col_rate = st.columns(2)
     with col_tolak:
         jam_tolak = st.number_input("☕ Jam Tolak / Break (Jam)", min_value=0.0, max_value=12.0, step=0.5, value=1.0)
     with col_rate:
-        # Default rate diset ke 7.00
         rate_jam = st.number_input("💎 Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=7.0)
     
     simpan = st.form_submit_button("⚡ SIMPAN REKOD")
     
     if simpan:
+        # Convert 12-hour format ke 24-hour time object
+        h_mula = jam_mula % 12 + (12 if ampm_mula == "PM" else 0)
+        h_tamat = jam_tamat % 12 + (12 if ampm_tamat == "PM" else 0)
+        
+        waktu_mula = datetime.time(h_mula, int(minit_mula))
+        waktu_tamat = datetime.time(h_tamat, int(minit_mula2))
+
         dt_mula = datetime.datetime.combine(datetime.date.today(), waktu_mula)
         dt_tamat = datetime.datetime.combine(datetime.date.today(), waktu_tamat)
         
@@ -178,29 +199,14 @@ if len(df) > 0:
     st.write("")
     st.dataframe(df_filtered.drop(columns=["Bulan_Tahun"]), use_container_width=True)
     
-    # Padam Rekod Spesifik / Padam Bulan
+    # Padam Bulan
     st.markdown("---")
-    col_padam1, col_padam2 = st.columns(2)
-    
-    with col_padam1:
-        with st.expander("❌ Padam 1 Rekod Harian"):
-            senarai_tarikh = df_filtered["Tarikh"].tolist()
-            if senarai_tarikh:
-                tarikh_padam = st.selectbox("Pilih Tarikh:", senarai_tarikh)
-                if st.button("Padam Rekod Ini"):
-                    idx_to_drop = df_filtered[df_filtered["Tarikh"] == tarikh_padam].index
-                    df = df.drop(idx_to_drop)
-                    df.to_csv(FILE_PATH, index=False)
-                    st.success(f"Rekod {tarikh_padam} dipadam!")
-                    st.rerun()
-
-    with col_padam2:
-        with st.expander(f"🗑️ Padam Bulan {bulan_pilihan}"):
-            st.warning("Padam SEMUA rekod bulan ini?")
-            if st.button(f"Sahkan Padam {bulan_pilihan}"):
-                df_baki = df[df["Bulan_Tahun"] != bulan_pilihan]
-                df_baki.to_csv(FILE_PATH, index=False)
-                st.success(f"Rekod bulan {bulan_pilihan} telah dipadam!")
-                st.rerun()
+    with st.expander(f"🗑️ Padam Data Bulan {bulan_pilihan}"):
+        st.warning(f"Adakah anda pasti nak padam SEMUA rekod untuk bulan **{bulan_pilihan}**?")
+        if st.button(f"Sahkan Padam {bulan_pilihan}"):
+            df_baki = df[df["Bulan_Tahun"] != bulan_pilihan]
+            df_baki.to_csv(FILE_PATH, index=False)
+            st.success(f"Rekod bulan {bulan_pilihan} telah dipadam!")
+            st.rerun()
 else:
     st.info("Belum ada data. Masukkan waktu kerja korang kat atas untuk simpan rekod baru!")
