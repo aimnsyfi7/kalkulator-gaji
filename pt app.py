@@ -100,7 +100,7 @@ if not df.empty and "Mula Kerja" not in df.columns:
     df = pd.read_csv(FILE_PATH)
 
 # ---- HEADER SECTION ----
-st.title("⚡ GajiKu Dark Mode")
+st.title("⚡ GajiKu Dark ")
 st.caption("🌌 Sistem pemantauan jam kerja & gaji bulanan bergaya futuristik.")
 
 st.markdown("---")
