@@ -10,8 +10,8 @@ FILE_PATH = "rekod_gaji.csv"
 
 # 1. Semak fail data CSV, jika belum ada buat fail baru
 if not os.path.exists(FILE_PATH):
-df_init = pd.DataFrame(columns=["Tarikh", "Jam Kerja", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"])
-df_init.to_csv(FILE_PATH, index=False)
+  df_init = pd.DataFrame(columns=["Tarikh", "Jam Kerja", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"])
+  df_init.to_csv(FILE_PATH, index=False)
 
 # Baca data semasa dari fail
 df = pd.read_csv(FILE_PATH)
