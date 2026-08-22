@@ -36,14 +36,14 @@ st.markdown("""
     }
     
     div[data-testid="stMetricValue"] {
-        font-size: 30px !important;
+        font-size: 26px !important;
         font-weight: 800 !important;
         color: #00E676 !important;
         text-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
     }
     
     div[data-testid="stMetricLabel"] {
-        font-size: 13px !important;
+        font-size: 12px !important;
         font-weight: 600 !important;
         color: #A0A0A0 !important;
         text-transform: uppercase;
@@ -115,6 +115,7 @@ with st.form("form_gaji", clear_on_submit=True):
     with col_tolak:
         jam_tolak = st.number_input("☕ Jam Tolak / Break (Jam)", min_value=0.0, max_value=12.0, step=0.5, value=1.0)
     with col_rate:
+        # Default rate diset ke 7.00
         rate_jam = st.number_input("💎 Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=7.0)
     
     simpan = st.form_submit_button("⚡ SIMPAN REKOD")
@@ -177,14 +178,29 @@ if len(df) > 0:
     st.write("")
     st.dataframe(df_filtered.drop(columns=["Bulan_Tahun"]), use_container_width=True)
     
-    # Padam Bulan
+    # Padam Rekod Spesifik / Padam Bulan
     st.markdown("---")
-    with st.expander(f"🗑️ Padam Data Bulan {bulan_pilihan}"):
-        st.warning(f"Adakah anda pasti nak padam SEMUA rekod untuk bulan **{bulan_pilihan}**?")
-        if st.button(f"Sahkan Padam {bulan_pilihan}"):
-            df_baki = df[df["Bulan_Tahun"] != bulan_pilihan]
-            df_baki.to_csv(FILE_PATH, index=False)
-            st.success(f"Rekod bulan {bulan_pilihan} telah dipadam!")
-            st.rerun()
+    col_padam1, col_padam2 = st.columns(2)
+    
+    with col_padam1:
+        with st.expander("❌ Padam 1 Rekod Harian"):
+            senarai_tarikh = df_filtered["Tarikh"].tolist()
+            if senarai_tarikh:
+                tarikh_padam = st.selectbox("Pilih Tarikh:", senarai_tarikh)
+                if st.button("Padam Rekod Ini"):
+                    idx_to_drop = df_filtered[df_filtered["Tarikh"] == tarikh_padam].index
+                    df = df.drop(idx_to_drop)
+                    df.to_csv(FILE_PATH, index=False)
+                    st.success(f"Rekod {tarikh_padam} dipadam!")
+                    st.rerun()
+
+    with col_padam2:
+        with st.expander(f"🗑️ Padam Bulan {bulan_pilihan}"):
+            st.warning("Padam SEMUA rekod bulan ini?")
+            if st.button(f"Sahkan Padam {bulan_pilihan}"):
+                df_baki = df[df["Bulan_Tahun"] != bulan_pilihan]
+                df_baki.to_csv(FILE_PATH, index=False)
+                st.success(f"Rekod bulan {bulan_pilihan} telah dipadam!")
+                st.rerun()
 else:
     st.info("Belum ada data. Masukkan waktu kerja korang kat atas untuk simpan rekod baru!")
