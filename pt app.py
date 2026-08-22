@@ -10,8 +10,8 @@ FILE_PATH = "rekod_gaji.csv"
 
 # 1. Semak fail data CSV, jika belum ada buat fail baru
 if not os.path.exists(FILE_PATH):
-  df_init = pd.DataFrame(columns=["Tarikh", "Jam Kerja", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"])
-  df_init.to_csv(FILE_PATH, index=False)
+df_init = pd.DataFrame(columns=["Tarikh", "Jam Kerja", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"])
+df_init.to_csv(FILE_PATH, index=False)
 
 # Baca data semasa dari fail
 df = pd.read_csv(FILE_PATH)
@@ -21,19 +21,18 @@ st.title("⏱️ Sistem Pengira & Rekod Gaji Jam")
 # ---- BAHAGIAN 1: BORANG MASUKKAN DATA HARIAN ----
 st.subheader("➕ Isi Rekod Kerja Baru")
 
-  with st.form("form_gaji", clear_on_submit=True):
-  tarikh = st.date_input("Tarikh Kerja", value=datetime.now())
-  jam_kerja = st.number_input("Berapa Jam Bekerja", min_value=0.0, step=0.5, value=0.0)
-  rate_jam = st.number_input("Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=0.0)
+with st.form("form_gaji", clear_on_submit=True):
+tarikh = st.date_input("Tarikh Kerja", value=datetime.now())
+jam_kerja = st.number_input("Berapa Jam Bekerja", min_value=0.0, step=0.5, value=0.0)
+rate_jam = st.number_input("Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=0.0)
 
 simpan = st.form_submit_button("Simpan Rekod")
 
 if simpan:
 if jam_kerja > 0 and rate_jam > 0:
 gaji_syif = jam_kerja * rate_jam
-bulan_tahun = tarikh.strftime("%B %Y") # Contoh: "August 2026"
+bulan_tahun = tarikh.strftime("%B %Y")
 
-# Tambah baris baru
 data_baru = pd.DataFrame({
 "Tarikh": [tarikh.strftime("%d/%m/%Y")],
 "Jam Kerja": [jam_kerja],
@@ -54,16 +53,11 @@ st.markdown("---")
 st.subheader("📑 Senarai Rekod & Rekap Bulan")
 
 if not df.empty:
-# Ambil senarai bulan yang ada dalam data
 senarai_bulan = df["Bulan_Tahun"].unique().tolist()
-
-# Menu pilih bulan
 bulan_pilihan = st.selectbox("📅 Pilih Bulan Untuk Dilihat / Dipadam:", senarai_bulan)
 
-# Tapis data mengikut bulan yang dipilih
 df_filtered = df[df["Bulan_Tahun"] == bulan_pilihan].copy()
 
-# Total gaji & jam untuk bulan yang dipilih
 total_gaji_bulan = df_filtered["Gaji Syif (RM)"].sum()
 total_jam_bulan = df_filtered["Jam Kerja"].sum()
 
@@ -72,19 +66,15 @@ col1.metric(f"TOTAL GAJI ({bulan_pilihan})", f"RM {total_gaji_bulan:.2f}")
 col2.metric(f"TOTAL JAM ({bulan_pilihan})", f"{total_jam_bulan:.1f} Jam")
 
 st.write("")
-# Paparkan jadual rekod tanpa lajur 'Bulan_Tahun' supaya lebih kemas
 st.dataframe(df_filtered.drop(columns=["Bulan_Tahun"]), use_container_width=True)
 
-# ---- BUTANG PADAM UNTUK BULAN PILIHAN SAHAJA ----
 st.markdown("---")
 with st.expander(f"🗑️ Padam Data Bulan {bulan_pilihan}"):
 st.warning(f"Adakah anda pasti nak padam SEMUA rekod untuk bulan {bulan_pilihan} sahaja?")
 if st.button(f"Sahkan Padam Bulan {bulan_pilihan}"):
-# Simpan semula data bulan-bulan LAIN sahaja (asingkan bulan pilihan)
 df_baki = df[df["Bulan_Tahun"] != bulan_pilihan]
 df_baki.to_csv(FILE_PATH, index=False)
 st.success(f"Rekod untuk bulan {bulan_pilihan} telah dipadam!")
 st.rerun()
-
 else:
 st.info("Belum ada rekod lagi. Isi borang di atas untuk mula simpan data.")
