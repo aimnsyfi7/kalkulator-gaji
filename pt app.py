@@ -1,54 +1,73 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime
+from datetime import datetime, combine, date, time
 
 st.set_page_config(page_title="Sistem Rekod Gaji Jam", layout="centered")
 
 FILE_PATH = "rekod_gaji.csv"
 
-# 1. Semak fail data CSV
+# 1. Semak fail data CSV, jika belum ada buat fail baru
 if not os.path.exists(FILE_PATH):
-    df_init = pd.DataFrame(columns=["Tarikh", "Jam Kerja", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"])
+    df_init = pd.DataFrame(columns=["Tarikh", "Mula Kerja", "Tamat Kerja", "Jam Kerja", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"])
     df_init.to_csv(FILE_PATH, index=False)
 
-# Baca data
+# Baca data semasa dari fail
 df = pd.read_csv(FILE_PATH)
 
 st.title("⏱️ Sistem Pengira & Rekod Gaji Jam")
 
-# ---- BAHAGIAN 1: BORANG INPUT ----
+# ---- BAHAGIAN 1: BORANG INPUT HARIAN ----
 st.subheader("➕ Isi Rekod Kerja Baru")
 
 with st.form("form_gaji", clear_on_submit=True):
     tarikh = st.date_input("Tarikh Kerja", value=datetime.now())
-    jam_kerja = st.number_input("Berapa Jam Bekerja", min_value=0.0, step=0.5, value=0.0)
-    rate_jam = st.number_input("Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=0.0)
+    
+    col_waktu1, col_waktu2 = st.columns(2)
+    with col_waktu1:
+        waktu_mula = st.time_input("Pukul Berapa Mula", value=time(9, 0))
+    with col_waktu2:
+        waktu_tamat = st.time_input("Pukul Berapa Tamat", value=time(17, 0))
+        
+    rate_jam = st.number_input("Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=7.0)
     
     simpan = st.form_submit_button("Simpan Rekod")
     
     if simpan:
+        # Kirakan beza masa (jumlah jam kerja) secara automatik
+        dt_mula = combine(date.today(), waktu_mula)
+        dt_tamat = combine(date.today(), waktu_tamat)
+        
+        # Jika kerja melepasi tengah malam (contoh: 10 PM hingga 6 AM)
+        if dt_tamat <= dt_mula:
+            dt_tamat = dt_tamat.replace(day=dt_tamat.day + 1)
+            
+        durasi = dt_tamat - dt_mula
+        jam_kerja = durasi.total_seconds() / 3600.0  # Tukar ke unit jam
+        
         if jam_kerja > 0 and rate_jam > 0:
             gaji_syif = jam_kerja * rate_jam
             bulan_tahun = tarikh.strftime("%B %Y")
             
             data_baru = pd.DataFrame({
                 "Tarikh": [tarikh.strftime("%d/%m/%Y")],
-                "Jam Kerja": [jam_kerja],
+                "Mula Kerja": [waktu_mula.strftime("%I:%M %p")],
+                "Tamat Kerja": [waktu_tamat.strftime("%I:%M %p")],
+                "Jam Kerja": [round(jam_kerja, 2)],
                 "Rate/Jam (RM)": [rate_jam],
-                "Gaji Syif (RM)": [gaji_syif],
+                "Gaji Syif (RM)": [round(gaji_syif, 2)],
                 "Bulan_Tahun": [bulan_tahun]
             })
             
             data_baru.to_csv(FILE_PATH, mode='a', header=False, index=False)
-            st.success(f"Berjaya disimpan! RM {gaji_syif:.2f} dimasukkan.")
+            st.success(f"Berjaya disimpan! Total kerja {jam_kerja:.2f} jam = RM {gaji_syif:.2f}")
             st.rerun()
         else:
-            st.error("Sila isi jam kerja dan rate jam dengan betul.")
+            st.error("Sila pastikan waktu kerja dan rate jam betul.")
 
 st.markdown("---")
 
-# ---- BAHAGIAN 2: SENARAI REKOD ----
+# ---- BAHAGIAN 2: SENARAI REKOD & REKAP BULANAN ----
 st.subheader("📑 Senarai Rekod & Rekap Bulan")
 
 if len(df) > 0:
