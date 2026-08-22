@@ -21,10 +21,10 @@ st.title("⏱️ Sistem Pengira & Rekod Gaji Jam")
 # ---- BAHAGIAN 1: BORANG MASUKKAN DATA HARIAN ----
 st.subheader("➕ Isi Rekod Kerja Baru")
 
-with st.form("form_gaji", clear_on_submit=True):
-tarikh = st.date_input("Tarikh Kerja", value=datetime.now())
-jam_kerja = st.number_input("Berapa Jam Bekerja", min_value=0.0, step=0.5, value=0.0)
-rate_jam = st.number_input("Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=0.0)
+  with st.form("form_gaji", clear_on_submit=True):
+  tarikh = st.date_input("Tarikh Kerja", value=datetime.now())
+  jam_kerja = st.number_input("Berapa Jam Bekerja", min_value=0.0, step=0.5, value=0.0)
+  rate_jam = st.number_input("Rate Gaji Per Jam (RM)", min_value=0.0, step=0.5, value=0.0)
 
 simpan = st.form_submit_button("Simpan Rekod")
 
