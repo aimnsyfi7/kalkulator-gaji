@@ -29,9 +29,9 @@ with st.form("form_gaji", clear_on_submit=True):
 simpan = st.form_submit_button("Simpan Rekod")
 
 if simpan:
-if jam_kerja > 0 and rate_jam > 0:
-gaji_syif = jam_kerja * rate_jam
-bulan_tahun = tarikh.strftime("%B %Y")
+  if jam_kerja > 0 and rate_jam > 0:
+  gaji_syif = jam_kerja * rate_jam
+  bulan_tahun = tarikh.strftime("%B %Y")
 
 data_baru = pd.DataFrame({
 "Tarikh": [tarikh.strftime("%d/%m/%Y")],
