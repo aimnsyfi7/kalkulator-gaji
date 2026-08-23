@@ -3,13 +3,10 @@ import pandas as pd
 import os
 import datetime
 import shutil
-import google.generativeai as genai
-from PIL import Image
-from io import StringIO
 
 # 1. Konfigurasi Halaman & Dark Theme
 st.set_page_config(
-    page_title="GajiKu | AI Scan Edition",
+    page_title="GajiKu | Live Punch-In Edition",
     page_icon="🌙",
     layout="centered"
 )
@@ -32,7 +29,7 @@ BACKUP_DIR = "backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# Auto Cleaning & Reading CSV (Laju dengan Caching)
+# Reading & Saving CSV
 @st.cache_data
 def muat_data():
     if os.path.exists(FILE_PATH):
@@ -56,44 +53,124 @@ def buat_auto_backup():
 
 df = muat_data()
 
+# Session state untuk tracking waktu Punch
+if "punch_mula" not in st.session_state:
+    st.session_state.punch_mula = None
+if "punch_mula_rehat" not in st.session_state:
+    st.session_state.punch_mula_rehat = None
+if "total_jam_rehat" not in st.session_state:
+    st.session_state.total_jam_rehat = 0.0
+
 # ---- SIDEBAR ----
 st.sidebar.title("⚡ GajiKu Navigation")
 menu_pilihan = st.sidebar.radio(
     "Menu Utama:",
-    ["⏱️ Rekod Syif Baru", "📸 Scan Jadual (AI)", "✏️ Live Edit Jadual", "📊 Analitik & Ringkasan", "🤖 AI Advisor", "💾 Backup & Restore"]
+    ["⏱️ Quick Punch-In / Input Syif", "✏️ Live Edit Jadual", "📊 Analitik & Ringkasan", "💾 Backup & Restore"]
 )
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔑 Gemini API Settings")
-api_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Dapatkan API key percuma dari aistudio.google.com")
-
 # ==========================================
-# PAGE 1: REKOD SYIF BARU
+# PAGE 1: QUICK PUNCH-IN & INPUT SYIF
 # ==========================================
-if menu_pilihan == "⏱️ Rekod Syif Baru":
-    st.title("⚡ Input Syif Harian")
+if menu_pilihan == "⏱️ Quick Punch-In / Input Syif":
+    st.title("⚡ Punch-In & Rekod Syif")
     st.markdown("---")
 
+    # ---- SEKSYEN 1: LIVE PUNCH CLOCK ----
+    st.subheader("🟢 Live Punch Clock (Kerja & Rehat)")
+    rate_live = st.number_input("💎 Rate Gaji/Jam (RM)", min_value=0.0, step=0.5, value=6.5, key="rate_live")
+
+    # FASA 1: BELUM PUNCH IN KERJA
+    if st.session_state.punch_mula is None:
+        if st.button("🚀 PUNCH IN KERJA", use_container_width=True):
+            st.session_state.punch_mula = datetime.datetime.now()
+            st.session_state.punch_mula_rehat = None
+            st.session_state.total_jam_rehat = 0.0
+            st.success(f"Mula Kerja: **{st.session_state.punch_mula.strftime('%I:%M:%S %p')}**")
+            st.rerun()
+
+    # FASA 2: SEDANG BEKERJA ATAU SEDANG REHAT
+    else:
+        mula_time = st.session_state.punch_mula
+        st.info(f"STATUS: **Mula Kerja:** {mula_time.strftime('%I:%M %p')} | **Total Rehat Semasa:** {st.session_state.total_jam_rehat:.2f} jam")
+
+        col_rehat, col_balik = st.columns(2)
+
+        with col_rehat:
+            if st.session_state.punch_mula_rehat is None:
+                if st.button("☕ PUNCH OUT REHAT", use_container_width=True):
+                    st.session_state.punch_mula_rehat = datetime.datetime.now()
+                    st.warning(f"Mula Rehat pada: **{st.session_state.punch_mula_rehat.strftime('%I:%M:%S %p')}**")
+                    st.rerun()
+            else:
+                mula_r = st.session_state.punch_mula_rehat
+                st.warning(f"Sedang Rehat Sejak: **{mula_r.strftime('%I:%M %p')}**")
+                if st.button("🟢 PUNCH IN REHAT TAMAT", use_container_width=True):
+                    tamat_r = datetime.datetime.now()
+                    durasi_rehat = (tamat_r - mula_r).total_seconds() / 3600.0
+                    st.session_state.total_jam_rehat += durasi_rehat
+                    st.session_state.punch_mula_rehat = None
+                    st.success(f"Tamat Rehat! Masa rehat ditambah: **{durasi_rehat*60:.0f} minit**")
+                    st.rerun()
+
+        with col_balik:
+            if st.button("🔴 PUNCH OUT KERJA & SIMPAN", use_container_width=True):
+                if st.session_state.punch_mula_rehat is not None:
+                    tamat_r = datetime.datetime.now()
+                    durasi_rehat = (tamat_r - st.session_state.punch_mula_rehat).total_seconds() / 3600.0
+                    st.session_state.total_jam_rehat += durasi_rehat
+                    st.session_state.punch_mula_rehat = None
+
+                tamat_time = datetime.datetime.now()
+                tempoh_kasar = (tamat_time - mula_time).total_seconds() / 3600.0
+                jam_tolak = round(st.session_state.total_jam_rehat, 2)
+                jam_bersih = round(max(0.0, tempoh_kasar - jam_tolak), 2)
+                gaji_syif = round(jam_bersih * rate_live, 2)
+
+                data_baru = pd.DataFrame({
+                    "Tarikh": [mula_time.strftime("%d/%m/%Y")],
+                    "Mula Kerja": [mula_time.strftime("%I:%M %p")],
+                    "Tamat Kerja": [tamat_time.strftime("%I:%M %p")],
+                    "Jam Tolak": [jam_tolak],
+                    "Jam Bersih": [jam_bersih],
+                    "Rate/Jam (RM)": [rate_live],
+                    "Gaji Syif (RM)": [gaji_syif],
+                    "Bulan_Tahun": [mula_time.strftime("%B %Y")]
+                })
+                df_updated = pd.concat([df, data_baru], ignore_index=True)
+                simpan_data_csv(df_updated)
+                buat_auto_backup()
+
+                st.session_state.punch_mula = None
+                st.session_state.punch_mula_rehat = None
+                st.session_state.total_jam_rehat = 0.0
+
+                st.success(f"Punch Out Berjaya! Jam Bersih: **{jam_bersih:.2f} hrs** | Jam Rehat: **{jam_tolak:.2f} hrs** (RM {gaji_syif:.2f})")
+                st.rerun()
+
+    st.markdown("---")
+
+    # ---- SEKSYEN 2: INPUT MANUAL ----
+    st.subheader("📝 Input Manual (Pilih Jam)")
     with st.form("form_gaji", clear_on_submit=True):
         tarikh = st.date_input("🗓️ Tarikh Kerja", value=datetime.date.today())
         
         st.write("🌆 **Waktu Mula Kerja:**")
         col_h1, col_m1, col_p1 = st.columns(3)
-        with col_h1: jam_mula = st.selectbox("Jam", list(range(1, 13)), index=9, key="jm") 
-        with col_m1: minit_mula = st.selectbox("Minit", ["00", "15", "30", "45"], index=0, key="mm")
-        with col_p1: ampm_mula = st.selectbox("AM/PM", ["AM", "PM"], index=0, key="pm1") 
+        with col_h1: jam_mula = st.selectbox("Jam", list(range(1, 13)), index=1, key="jm") 
+        with col_m1: minit_mula = st.selectbox("Minit", ["00", "15", "30", "45"], index=2, key="mm") 
+        with col_p1: ampm_mula = st.selectbox("AM/PM", ["AM", "PM"], index=1, key="pm1") 
 
         st.write("🌃 **Waktu Tamat Kerja:**")
         col_h2, col_m2, col_p2 = st.columns(3)
-        with col_h2: jam_tamat = st.selectbox("Jam ", list(range(1, 13)), index=9, key="jt") 
-        with col_m2: minit_mula2 = st.selectbox("Minit ", ["00", "15", "30", "45"], index=0, key="mm2")
+        with col_h2: jam_tamat = st.selectbox("Jam ", list(range(1, 13)), index=10, key="jt") 
+        with col_m2: minit_mula2 = st.selectbox("Minit ", ["00", "15", "30", "45"], index=0, key="mm2") 
         with col_p2: ampm_tamat = st.selectbox("AM/PM ", ["AM", "PM"], index=1, key="pm2") 
             
         col_tolak, col_rate = st.columns(2)
         with col_tolak: jam_tolak = st.number_input("☕ Jam Tolak (Jam)", min_value=0.0, max_value=12.0, step=0.5, value=1.0)
-        with col_rate: rate_jam = st.number_input("💎 Rate Gaji/Jam (RM)", min_value=0.0, step=0.5, value=7.0)
+        with col_rate: rate_jam = st.number_input("💎 Rate Gaji/Jam (RM)", min_value=0.0, step=0.5, value=6.5)
         
-        simpan = st.form_submit_button("⚡ SIMPAN REKOD")
+        simpan = st.form_submit_button("⚡ SIMPAN REKOD MANUAL")
         
         if simpan:
             h_mula = jam_mula % 12 + (12 if ampm_mula == "PM" else 0)
@@ -102,8 +179,8 @@ if menu_pilihan == "⏱️ Rekod Syif Baru":
             waktu_mula = datetime.time(h_mula, int(minit_mula))
             waktu_tamat = datetime.time(h_tamat, int(minit_mula2))
 
-            dt_mula = datetime.datetime.combine(datetime.date.today(), waktu_mula)
-            dt_tamat = datetime.datetime.combine(datetime.date.today(), waktu_tamat)
+            dt_mula = datetime.datetime.combine(tarikh, waktu_mula)
+            dt_tamat = datetime.datetime.combine(tarikh, waktu_tamat)
             if dt_tamat <= dt_mula: dt_tamat += datetime.timedelta(days=1)
                 
             jam_bersih = (dt_tamat - dt_mula).total_seconds() / 3600.0 - jam_tolak
@@ -127,73 +204,7 @@ if menu_pilihan == "⏱️ Rekod Syif Baru":
                 st.rerun()
 
 # ==========================================
-# PAGE 2: SCAN JADUAL KERJA (AI OCR)
-# ==========================================
-elif menu_pilihan == "📸 Scan Jadual (AI)":
-    st.title("📸 AI Scan Jadual Syif")
-    st.markdown("---")
-
-    if not api_key:
-        st.warning("⚠️ Masukkan **Gemini API Key** di sidebar dulu.")
-    else:
-        uploaded_img = st.file_uploader("Upload gambar jadual (PNG/JPG):", type=["png", "jpg", "jpeg"])
-        default_rate = st.number_input("💎 Rate Gaji Per Jam (RM):", min_value=0.0, step=0.5, value=7.0)
-        default_break = st.number_input("☕ Jam Tolak Default (Jam):", min_value=0.0, step=0.5, value=1.0)
-        
-        if uploaded_img is not None:
-            img = Image.open(uploaded_img)
-            st.image(img, caption="Gambar Jadual", use_container_width=True)
-            
-            if st.button("✨ BACA JADUAL & EKSTRAK SYIF"):
-                with st.spinner("AI sedang membaca jadual..."):
-                    try:
-                        genai.configure(api_key=api_key)
-                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-                        
-                        prompt_ocr = "Ekstrak jadual syif kerja daripada gambar ini. Kembalikan HANYA format CSV tanpa penjelasan dengan header: Tarikh,Mula Kerja,Tamat Kerja. Format Tarikh DD/MM/YYYY, Mula & Tamat HH:MM AM/PM."
-                        
-                        response = model.generate_content([prompt_ocr, img])
-                        raw_csv = response.text.strip().replace("```csv", "").replace("```", "").strip()
-                        
-                        df_extracted = pd.read_csv(StringIO(raw_csv))
-                        
-                        jam_bersih_l, gaji_l, bulan_l, tolak_l, rate_l = [], [], [], [], []
-
-                        for _, row in df_extracted.iterrows():
-                            dt_mula = datetime.datetime.strptime(row["Mula Kerja"], "%I:%M %p")
-                            dt_tamat = datetime.datetime.strptime(row["Tamat Kerja"], "%I:%M %p")
-                            dt_tarikh = datetime.datetime.strptime(row["Tarikh"], "%d/%m/%Y")
-                            
-                            if dt_tamat <= dt_mula: dt_tamat += datetime.timedelta(days=1)
-                            
-                            jam_b = round(max(0, ((dt_tamat - dt_mula).total_seconds() / 3600.0) - default_break), 2)
-                            gaji = round(jam_b * default_rate, 2)
-                            
-                            jam_bersih_l.append(jam_b)
-                            gaji_l.append(gaji)
-                            bulan_l.append(dt_tarikh.strftime("%B %Y"))
-                            tolak_l.append(default_break)
-                            rate_l.append(default_rate)
-
-                        df_extracted["Jam Tolak"] = tolak_l
-                        df_extracted["Jam Bersih"] = jam_bersih_l
-                        df_extracted["Rate/Jam (RM)"] = rate_l
-                        df_extracted["Gaji Syif (RM)"] = gaji_l
-                        df_extracted["Bulan_Tahun"] = bulan_l
-
-                        df_extracted = df_extracted[["Tarikh", "Mula Kerja", "Tamat Kerja", "Jam Tolak", "Jam Bersih", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"]]
-                        st.dataframe(df_extracted, use_container_width=True)
-                        
-                        df_final = pd.concat([df, df_extracted], ignore_index=True)
-                        simpan_data_csv(df_final)
-                        buat_auto_backup()
-                        st.success("Semua syif berjaya disimpan ke database!")
-
-                    except Exception as e:
-                        st.error(f"Gagal membaca imej: {e}")
-
-# ==========================================
-# PAGE 3: LIVE EDIT JADUAL
+# PAGE 2: LIVE EDIT JADUAL
 # ==========================================
 elif menu_pilihan == "✏️ Live Edit Jadual":
     st.title("✏️ Pengurusan & Edit Rekod")
@@ -231,7 +242,7 @@ elif menu_pilihan == "✏️ Live Edit Jadual":
         st.info("Belum ada data rekod.")
 
 # ==========================================
-# PAGE 4: ANALITIK & RINGKASAN
+# PAGE 3: ANALITIK & RINGKASAN
 # ==========================================
 elif menu_pilihan == "📊 Analitik & Ringkasan":
     st.title("📊 Analitik Gaji Bulanan")
@@ -252,31 +263,7 @@ elif menu_pilihan == "📊 Analitik & Ringkasan":
         st.info("Belum ada data analitik.")
 
 # ==========================================
-# PAGE 5: AI ADVISOR
-# ==========================================
-elif menu_pilihan == "🤖 AI Advisor":
-    st.title("🤖 AI Personal Gaji Advisor")
-    st.markdown("---")
-
-    if not api_key:
-        st.warning("⚠️ Masukkan **Gemini API Key** di sidebar dulu.")
-    elif len(df) == 0:
-        st.info("Belum ada data rekod gaji.")
-    else:
-        if st.button("✨ Minta AI Analisa Gaji Saya"):
-            with st.spinner("AI sedang membaca data..."):
-                try:
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash-latest')
-                    system_prompt = f"Data Gaji User:\n{df.to_string(index=False)}"
-                    
-                    res = model.generate_content(f"{system_prompt}\n\nBerikan ringkasan trend gaji & jam kerja.")
-                    st.write(res.text)
-                except Exception as e:
-                    st.error(f"Ralat AI: {e}")
-
-# ==========================================
-# PAGE 6: BACKUP & RESTORE
+# PAGE 4: BACKUP & RESTORE
 # ==========================================
 elif menu_pilihan == "💾 Backup & Restore":
     st.title("💾 Pusat Backup & Restore Data")
