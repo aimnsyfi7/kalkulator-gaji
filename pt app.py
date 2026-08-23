@@ -32,7 +32,7 @@ BACKUP_DIR = "backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# Auto Cleaning & Reading CSV
+# Auto Cleaning & Reading CSV (Laju dengan Caching)
 @st.cache_data
 def muat_data():
     if os.path.exists(FILE_PATH):
@@ -127,7 +127,7 @@ if menu_pilihan == "⏱️ Rekod Syif Baru":
                 st.rerun()
 
 # ==========================================
-# PAGE 2: SCAN JADUAL KERJA (AI OCR STABIL)
+# PAGE 2: SCAN JADUAL KERJA (AI OCR)
 # ==========================================
 elif menu_pilihan == "📸 Scan Jadual (AI)":
     st.title("📸 AI Scan Jadual Syif")
@@ -148,7 +148,7 @@ elif menu_pilihan == "📸 Scan Jadual (AI)":
                 with st.spinner("AI sedang membaca jadual..."):
                     try:
                         genai.configure(api_key=api_key)
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
                         
                         prompt_ocr = """
                         Ekstrak jadual syif kerja daripada gambar ini. 
@@ -162,142 +162,4 @@ elif menu_pilihan == "📸 Scan Jadual (AI)":
                         """
                         
                         response = model.generate_content([prompt_ocr, img])
-                        raw_csv = response.text.strip().replace("```csv", "").replace("```", "").strip()
-                        
-                        df_extracted = pd.read_csv(StringIO(raw_csv))
-                        
-                        jam_bersih_l, gaji_l, bulan_l, tolak_l, rate_l = [], [], [], [], []
-
-                        for _, row in df_extracted.iterrows():
-                            dt_mula = datetime.datetime.strptime(row["Mula Kerja"], "%I:%M %p")
-                            dt_tamat = datetime.datetime.strptime(row["Tamat Kerja"], "%I:%M %p")
-                            dt_tarikh = datetime.datetime.strptime(row["Tarikh"], "%d/%m/%Y")
-                            
-                            if dt_tamat <= dt_mula: dt_tamat += datetime.timedelta(days=1)
-                            
-                            jam_b = round(max(0, ((dt_tamat - dt_mula).total_seconds() / 3600.0) - default_break), 2)
-                            gaji = round(jam_b * default_rate, 2)
-                            
-                            jam_bersih_l.append(jam_b)
-                            gaji_l.append(gaji)
-                            bulan_l.append(dt_tarikh.strftime("%B %Y"))
-                            tolak_l.append(default_break)
-                            rate_l.append(default_rate)
-
-                        df_extracted["Jam Tolak"] = tolak_l
-                        df_extracted["Jam Bersih"] = jam_bersih_l
-                        df_extracted["Rate/Jam (RM)"] = rate_l
-                        df_extracted["Gaji Syif (RM)"] = gaji_l
-                        df_extracted["Bulan_Tahun"] = bulan_l
-
-                        df_extracted = df_extracted[["Tarikh", "Mula Kerja", "Tamat Kerja", "Jam Tolak", "Jam Bersih", "Rate/Jam (RM)", "Gaji Syif (RM)", "Bulan_Tahun"]]
-                        st.dataframe(df_extracted, use_container_width=True)
-                        
-                        df_final = pd.concat([df, df_extracted], ignore_index=True)
-                        simpan_data_csv(df_final)
-                        buat_auto_backup()
-                        st.success("Semua syif berjaya disimpan ke database!")
-
-                    except Exception as e:
-                        st.error(f"Gagal membaca imej: {e}")
-
-# ==========================================
-# PAGE 3: LIVE EDIT JADUAL
-# ==========================================
-elif menu_pilihan == "✏️ Live Edit Jadual":
-    st.title("✏️ Pengurusan & Edit Rekod")
-    st.markdown("---")
-
-    if len(df) > 0:
-        senarai_bulan = df["Bulan_Tahun"].dropna().unique().tolist()
-        bulan_pilihan = st.selectbox("📅 Pilih Bulan Nak Edit:", senarai_bulan)
-        df_filtered = df[df["Bulan_Tahun"] == bulan_pilihan].copy()
-        
-        df_edited = st.data_editor(df_filtered, num_rows="dynamic", use_container_width=True)
-        
-        if st.button("💾 SIMPAN PERUBAHAN JADUAL"):
-            for i in df_edited.index:
-                try:
-                    dt_mula = datetime.datetime.strptime(df_edited.at[i, "Mula Kerja"], "%I:%M %p")
-                    dt_tamat = datetime.datetime.strptime(df_edited.at[i, "Tamat Kerja"], "%I:%M %p")
-                    if dt_tamat <= dt_mula: dt_tamat += datetime.timedelta(days=1)
-                    
-                    jam_tolak = float(df_edited.at[i, "Jam Tolak"])
-                    rate_jam = float(df_edited.at[i, "Rate/Jam (RM)"])
-                    jam_b = ((dt_tamat - dt_mula).total_seconds() / 3600.0) - jam_tolak
-                    
-                    df_edited.at[i, "Jam Bersih"] = round(jam_b, 2)
-                    df_edited.at[i, "Gaji Syif (RM)"] = round(jam_b * rate_jam, 2)
-                except: pass
-                    
-            df_baki = df[df["Bulan_Tahun"] != bulan_pilihan]
-            df_final = pd.concat([df_baki, df_edited], ignore_index=True)
-            simpan_data_csv(df_final)
-            buat_auto_backup()
-            st.success("Perubahan berjaya disimpan!")
-            st.rerun()
-    else:
-        st.info("Belum ada data rekod.")
-
-# ==========================================
-# PAGE 4: ANALITIK & RINGKASAN
-# ==========================================
-elif menu_pilihan == "📊 Analitik & Ringkasan":
-    st.title("📊 Analitik Gaji Bulanan")
-    st.markdown("---")
-
-    if len(df) > 0:
-        senarai_bulan = df["Bulan_Tahun"].dropna().unique().tolist()
-        bulan_pilihan = st.selectbox("📅 Pilih Bulan:", senarai_bulan)
-        df_filtered = df[df["Bulan_Tahun"] == bulan_pilihan].copy()
-        
-        col1, col2 = st.columns(2)
-        with col1: st.metric(f"💰 Total Gaji ({bulan_pilihan})", f"RM {df_filtered['Gaji Syif (RM)'].sum():.2f}")
-        with col2: st.metric(f"⏳ Total Jam Bersih ({bulan_pilihan})", f"{df_filtered['Jam Bersih'].sum():.1f} hrs")
-        
-        st.bar_chart(df_filtered.set_index("Tarikh")["Gaji Syif (RM)"])
-        st.dataframe(df_filtered.drop(columns=["Bulan_Tahun"]), use_container_width=True)
-    else:
-        st.info("Belum ada data analitik.")
-
-# ==========================================
-# PAGE 5: AI ADVISOR
-# ==========================================
-elif menu_pilihan == "🤖 AI Advisor":
-    st.title("🤖 AI Personal Gaji Advisor")
-    st.markdown("---")
-
-    if not api_key:
-        st.warning("⚠️ Masukkan **Gemini API Key** di sidebar dulu.")
-    elif len(df) == 0:
-        st.info("Belum ada data rekod gaji.")
-    else:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        system_prompt = f"Data Gaji User:\n{df.to_string(index=False)}"
-
-        if st.button("✨ Minta AI Analisa Gaji Saya"):
-            with st.spinner("AI sedang membaca data..."):
-                try:
-                    res = model.generate_content(f"{system_prompt}\n\nBerikan ringkasan trend gaji & jam kerja.")
-                    st.write(res.text)
-                except Exception as e:
-                    st.error(f"Ralat AI: {e}")
-
-# ==========================================
-# PAGE 6: BACKUP & RESTORE
-# ==========================================
-elif menu_pilihan == "💾 Backup & Restore":
-    st.title("💾 Pusat Backup & Restore Data")
-    st.markdown("---")
-    
-    if len(df) > 0:
-        st.download_button("📥 DOWNLOAD CSV BACKUP", data=df.to_csv(index=False).encode('utf-8'), file_name="rekod_gaji_backup.csv", mime="text/csv")
-        
-    uploaded_file = st.file_uploader("Upload CSV Backup:", type=["csv"])
-    if uploaded_file is not None:
-        if st.button("🔄 SAHKAN RESTORE DATA"):
-            df_up = pd.read_csv(uploaded_file)
-            simpan_data_csv(df_up)
-            st.success("Data berjaya dipulihkan!")
-            st.rerun()
+                        raw_csv = response.text.strip().replace("```csv", "").replace("
